@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wana Bingo</title>
+    <style>
+        body {
+            background-color: #0b1d28;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .wallet-container {
+            background-color: #122b3d;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border: 1px solid #1a3a52;
+        }
+
+        .wallet-title {
+            font-size: 16px;
+            color: #a0b0bc;
+        }
+
+        .wallet-balance {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ff9900;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 25px;
+        }
+
+        .number-box {
+            background-color: #1e3d54;
+            border: 2px solid #285270;
+            border-radius: 8px;
+            padding: 15px 0;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .number-box.selected {
+            background-color: #ff9900;
+            border-color: #ffffff;
+            color: #0b1d28;
+        }
+
+        .number-box.winner {
+            background-color: #4cd964;
+            border-color: #ffffff;
+            color: #0b1d28;
+        }
+
+        .button-container {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .btn-refresh {
+            background-color: #1a3a52;
+            color: #ffffff;
+        }
+
+        .btn-start {
+            background-color: #ff3b30;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="wallet-container">
+        <span class="wallet-title">💳 Wallet Balance</span>
+        <span class="wallet-balance" id="balanceText">100 ETB</span>
+    </div>
+
+    <div class="grid-container" id="bingoGrid"></div>
+
+    <div class="button-container">
+        <button class="btn btn-refresh" onclick="refreshNumbers()">Refresh</button>
+        <button class="btn btn-start" onclick="startGame()">Start Game</button>
+    </div>
+
+    <script>
+        const USER_ID = "test_user_1";
+        const BACKEND_URL = "http://127.0.0.1:8000"; 
+
+        let selectedNumbers = [];
+        const grid = document.getElementById('bingoGrid');
+        
+        function generateGrid() {
+            grid.innerHTML = "";
+            selectedNumbers = [];
+            for (let i = 1; i <= 25; i++) {
+                const box = document.createElement('div');
+                box.className = 'number-box';
+                box.id = 'box-' + i;
+                box.innerText = i < 10 ? '0' + i : i;
+                
+                box.addEventListener('click', function() {
+                    if (box.classList.contains('selected')) {
+                        box.classList.remove('selected');
+                        selectedNumbers = selectedNumbers.filter(n => n !== i);
+                    } else {
+                        if (selectedNumbers.length < 5) {
+                            box.classList.add('selected');
+                            selectedNumbers.push(i);
+                        } else {
+                            alert("መምረጥ የሚችሉት 5 ቁጥሮችን ብቻ ነው!");
+                        }
+                    }
+                });
+                grid.appendChild(box);
+            }
+        }
+
+        // እዚህ ጋር የነበረው ስህተት ተስተካክሏል (async function ተብሏል)
+        async function startGame() {
+            if (selectedNumbers.length === 0) {
+                alert("እባክዎ መጀመሪያ የሚወራረዱበትን ቁጥር ይምረጡ!");
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/start-game/${USER_ID}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    document.getElementById('balanceText').innerText = data.balance + " ETB";
+                    const winningNum = data.winning_number;
+                    
+                    document.querySelectorAll('.number-box').forEach(b => b.classList.remove('winner'));
+                    
+                    const winnerBox = document.getElementById('box-' + winningNum);
+                    if (winnerBox) {
+                        winnerBox.classList.add('winner');
+                    }
+
+                    if (selectedNumbers.includes(winningNum)) {
+                        alert(`🎉 እንኳን ደስ አለዎት! የዕድል ቁጥር ${winningNum} ወጥቷል። አሸንፈዋል!`);
+                    } else {
+                        alert(`😞 ቁጥሩ አልገጠመም። የወጣው ቁጥር ${winningNum} ነው። ድጋሚ ይሞክሩ!`);
+                    }
+                }
+            } catch (error) {
+                const mockWinningNumber = Math.floor(Math.random() * 25) + 1;
+                document.querySelectorAll('.number-box').forEach(b => b.classList.remove('winner'));
+                const winnerBox = document.getElementById('box-' + mockWinningNumber);
+                if (winnerBox) winnerBox.classList.add('winner');
+
+                if (selectedNumbers.includes(mockWinningNumber)) {
+                    alert(`🎉 (የሙከራ ጨዋታ) አሸንፈዋል! የወጣው ቁጥር: ${mockWinningNumber}`);
+                } else {
+                    alert(`😞 (የሙከራ ጨዋታ) አልገጠመም። የወጣው ቁጥር: ${mockWinningNumber}`);
+                }
+            }
+        }
+
+        function refreshNumbers() {
+            generateGrid();
+        }
+
+        generateGrid();
+    </script>
+</body>
+</html>
