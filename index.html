@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cool Bingo</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: #0b1d28;
+            color: white;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            text-align: center;
+        }
+        .header {
+            background: #102a3a;
+            padding: 12px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .wallet { color: #f39c12; font-weight: bold; }
+
+        /* ገጽ 1፦ የቤቶች ዝርዝር (Main Lobby) */
+        .room-card {
+            background: #17384e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .bet-amount { font-size: 20px; font-weight: bold; color: #2ecc71; }
+        .btn-join {
+            background: #e67e22;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* ገጽ 2፦ የካርቴላ መምረጫ እና ካርቴላ */
+        #gamePage { display: none; }
+        .selection-box {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        input {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #17384e;
+            background: #17384e;
+            color: white;
+            width: 140px;
+        }
+        
+        /* የቢንጎ ሰንጠረዥ (5x5 Grid) */
+        .board-card {
+            background: white;
+            color: black;
+            border-radius: 8px;
+            padding: 10px;
+            max-width: 320px;
+            margin: 0 auto;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+        }
+        .cell {
+            border: 1px solid #ccc;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .header-cell {
+            background: #1e7e34;
+            color: white;
+            font-size: 18px;
+        }
+        .free-cell { background: #e67e22; color: white; font-size: 12px; }
+        .matched { background: #e67e22 !important; color: white; }
+
+        .btn-back {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <span><b>Cool Bingo</b></span>
+        <span class="wallet">💳 100 ETB</span>
+    </div>
+
+    <!-- ===== ገጽ 1፦ የቤቶች ዝርዝር (LOBBY) ===== -->
+    <div id="lobbyPage">
+        <h3>ጨዋታ ይምረጡ</h3>
+        
+        <div class="room-card">
+            <div>
+                <div class="bet-amount">10 ETB</div>
+                <small style="color: #2ecc71;">running...</small>
+            </div>
+            <button class="btn-join" onclick="openGame(10)">JOIN</button>
+        </div>
+
+        <div class="room-card">
+            <div>
+                <div class="bet-amount">20 ETB</div>
+                <small style="color: #f39c12;">waiting</small>
+            </div>
+            <button class="btn-join" onclick="openGame(20)">JOIN</button>
+        </div>
+
+        <div class="room-card">
+            <div>
+                <div class="bet-amount">50 ETB</div>
+                <small style="color: #f39c12;">waiting</small>
+            </div>
+            <button class="btn-join" onclick="openGame(50)">JOIN</button>
+        </div>
+    </div>
+
+    <!-- ===== ገጽ 2፦ የካርቴላ መጫወቻ ገጽ (GAME PAGE) ===== -->
+    <div id="gamePage">
+        <div class="selection-box">
+            <input type="number" id="boardNum" placeholder="የካርቴላ ቁጥር (1-100)">
+            <button class="btn-join" onclick="loadBoard()">SELECT BOARD</button>
+        </div>
+
+        <div id="statusText" style="color: #f1c40f; margin-bottom: 10px;"></div>
+
+        <!-- BINGO CARD -->
+        <div class="board-card" id="bingoCardView" style="display: none;">
+            <h4 id="boardTitle" style="margin: 5px 0; color: #102a3a;">Board #--</h4>
+            <div class="grid" id="gridContainer"></div>
+        </div>
+
+        <button class="btn-back" onclick="backToLobby()">ተመለስ (Back)</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // የካርቴላዎች ናሙና ዳታ (ለምሳሌ Board #27)
+        const boardsDatabase = {
+            "27": [
+                [11, 26, 39, 51, 75],
+                [3, 28, 33, 56, 67],
+                [10, 24, "FREE", 58, 74],
+                [7, 18, 45, 53, 69],
+                [13, 30, 44, 47, 64]
+            ]
+        };
+
+        // 1. JOIN ሲነካ ወደ ካርቴላ መምረጫ ገጽ ይወስዳል
+        function openGame(bet) {
+            document.getElementById('lobbyPage').style.display = 'none';
+            document.getElementById('gamePage').style.display = 'block';
+        }
+
+        // 2. ተጫዋቹ የካርቴላ ቁጥር ሲጽፍ ካርቴላውን ማሳየት
+        function loadBoard() {
+            const num = document.getElementById('boardNum').value;
+            
+            if (num !== "27") {
+                alert("ለሙከራ '27' ብለው ይጻፉ!");
+                return;
+            }
+
+            document.getElementById('bingoCardView').style.display = 'block';
+            document.getElementById('boardTitle').innerText = `Board #${num}`;
+            
+            const grid = document.getElementById('gridContainer');
+            grid.innerHTML = '';
+
+            // B-I-N-G-O ሄደር መፍጠር
+            const headers = ['B', 'I', 'N', 'G', 'O'];
+            headers.forEach(h => {
+                let div = document.createElement('div');
+                div.className = 'cell header-cell';
+                div.innerText = h;
+                grid.appendChild(div);
+            });
+
+            // ቁጥሮቹን ማስገባት
+            const data = boardsDatabase[num];
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    let val = data[r][c];
+                    let div = document.createElement('div');
+                    div.className = 'cell';
+                    
+                    if (val === "FREE") {
+                        div.innerText = "FREE";
+                        div.classList.add('free-cell');
+                    } else {
+                        div.innerText = val;
+                        div.id = `num-${val}`;
+                    }
+                    grid.appendChild(div);
+                }
+            }
+        }
+
+        // 3. ወደ ዋናው ገጽ መመለስ
+        function backToLobby() {
+            document.getElementById('gamePage').style.display = 'none';
+            document.getElementById('lobbyPage').style.display = 'block';
+            document.getElementById('bingoCardView').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
