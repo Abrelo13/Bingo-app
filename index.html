@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cool Bingo</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: #0b1d28;
+            color: white;
+            font-family: Arial, sans-serif;
+            margin: 0; padding: 15px;
+            text-align: center;
+        }
+        .header {
+            background: #102a3a;
+            padding: 12px 15px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .wallet { color: #f39c12; font-weight: bold; }
+
+        /* LOBBY */
+        .room-card {
+            background: #17384e;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .bet-amount { font-size: 20px; font-weight: bold; color: #2ecc71; }
+        .btn-join {
+            background: #e67e22;
+            color: white;
+            border: none;
+            padding: 10px 22px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* GAME PAGE */
+        #gamePage { display: none; }
+        .selection-box {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+        input {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            background: #17384e;
+            color: white;
+            width: 140px;
+            font-size: 16px;
+        }
+        
+        /* BINGO BOARD */
+        .board-card {
+            background: white;
+            color: black;
+            border-radius: 12px;
+            padding: 12px;
+            max-width: 330px;
+            margin: 0 auto;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+        }
+        .cell {
+            border: 1px solid #ccc;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .header-cell {
+            background: #1e7e34;
+            color: white;
+            font-size: 20px;
+        }
+        .free-cell { background: #e67e22; color: white; font-size: 13px; }
+        .marked { background: #e67e22 !important; color: white; }
+
+        /* LIVE CALL DISPLAY */
+        .call-display {
+            font-size: 22px;
+            font-weight: bold;
+            color: #f1c40f;
+            margin: 10px 0;
+            min-height: 30px;
+        }
+
+        .btn-back {
+            background: #4a6572;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+        .btn-bingo {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 25px;
+            margin-top: 10px;
+            cursor: pointer;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <span><b>Cool Bingo</b></span>
+        <span class="wallet">💳 <span id="userBalance">100</span> ETB</span>
+    </div>
+
+    <!-- LOBBY PAGE -->
+    <div id="lobbyPage">
+        <h3>ጨዋታ ይምረጡ</h3>
+        
+        <div class="room-card">
+            <div>
+                <div class="bet-amount">10 ETB</div>
+                <small style="color: #2ecc71;">running...</small>
+            </div>
+            <button class="btn-join" onclick="openGame(10)">JOIN</button>
+        </div>
+
+        <div class="room-card">
+            <div>
+                <div class="bet-amount">20 ETB</div>
+                <small style="color: #f39c12;">waiting</small>
+            </div>
+            <button class="btn-join" onclick="openGame(20)">JOIN</button>
+        </div>
+    </div>
+
+    <!-- GAME PAGE -->
+    <div id="gamePage">
+        <div class="selection-box" id="selectBox">
+            <input type="number" id="boardNum" placeholder="የካርቴላ ቁጥር">
+            <button class="btn-join" onclick="loadBoard()">SELECT BOARD</button>
+        </div>
+
+        <div class="call-display" id="callDisplay"></div>
+
+        <div class="board-card" id="bingoCardView" style="display: none;">
+            <h4 id="boardTitle" style="margin: 5px 0; color: #102a3a;">Board #--</h4>
+            <div class="grid" id="gridContainer"></div>
+        </div>
+
+        <button class="btn-bingo" id="bingoBtn" onclick="claimBingo()">BINGO! 🎉</button>
+        <br>
+        <button class="btn-back" onclick="backToLobby()">ተመለስ (Back)</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // የ 75-Ball ቢንጎ ህግ (Standard Bingo Rules)
+        // B: 1-15, I: 16-30, N: 31-45, G: 46-60, O: 61-75
+        const boardsDatabase = {
+            "27": [
+                [11, 26, 39, 51, 75],
+                [3, 28, 33, 56, 67],
+                [10, 24, "FREE", 58, 74],
+                [7, 18, 45, 53, 69],
+                [13, 30, 44, 47, 64]
+            ]
+        };
+
+        let activeBoard = null;
+        let drawnNumbers = [];
+        let gameInterval = null;
+        let userMarks = Array(5).fill().map(() => Array(5).fill(false));
+
+        function openGame(bet) {
+            document.getElementById('lobbyPage').style.display = 'none';
+            document.getElementById('gamePage').style.display = 'block';
+        }
+
+        function loadBoard() {
+            const num = document.getElementById('boardNum').value;
+            if (!boardsDatabase[num]) {
+                alert("እባክዎን '27' ብለው ይፃፉ!");
+                return;
+            }
+
+            activeBoard = boardsDatabase[num];
+            document.getElementById('selectBox').style.display = 'none';
+            document.getElementById('bingoCardView').style.display = 'block';
+            document.getElementById('boardTitle').innerText = `Board #${num}`;
+            document.getElementById('bingoBtn').style.display = 'inline-block';
+            
+            renderBoard();
+            startLiveCall();
+        }
+
+        function renderBoard() {
+            const grid = document.getElementById('gridContainer');
+            grid.innerHTML = '';
+
+            ['B', 'I', 'N', 'G', 'O'].forEach(h => {
+                let div = document.createElement('div');
+                div.className = 'cell header-cell';
+                div.innerText = h;
+                grid.appendChild(div);
+            });
+
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    let val = activeBoard[r][c];
+                    let div = document.createElement('div');
+                    div.className = 'cell';
+                    
+                    if (val === "FREE") {
+                        div.innerText = "FREE";
+                        div.classList.add('free-cell', 'marked');
+                        userMarks[r][c] = true; // FREE ሁልጊዜ Marked ነው
+                    } else {
+                        div.innerText = val;
+                        div.onclick = () => toggleMark(r, c, val, div);
+                    }
+                    grid.appendChild(div);
+                }
+            }
+        }
+
+        // ተጫዋቹ የወጣውን ቁጥር ሲነካው ማብራት
+        function toggleMark(r, c, val, el) {
+            if (drawnNumbers.includes(val)) {
+                userMarks[r][c] = !userMarks[r][c];
+                el.classList.toggle('marked');
+            } else {
+                alert("ይህ ቁጥር ገና አልወጣም!");
+            }
+        }
+
+        // የቀጥታ ቁጥሮች ጥሪ (Live Number Calling)
+        function startLiveCall() {
+            drawnNumbers = [];
+            document.getElementById('callDisplay').innerText = "ጨዋታው ሊጀምር ነው...";
+
+            gameInterval = setInterval(() => {
+                if (drawnNumbers.length >= 75) {
+                    clearInterval(gameInterval);
+                    return;
+                }
+
+                let num;
+                do {
+                    num = Math.floor(Math.random() * 75) + 1;
+                } while (drawnNumbers.includes(num));
+
+                drawnNumbers.push(num);
+
+                // የቢንጎ ፊደል መለየት
+                let letter = "B";
+                if (num > 15 && num <= 30) letter = "I";
+                else if (num > 30 && num <= 45) letter = "N";
+                else if (num > 45 && num <= 60) letter = "G";
+                else if (num > 60) letter = "O";
+
+                document.getElementById('callDisplay').innerText = `የወጣው፦ ${letter}-${num}`;
+
+            }, 3000); // በየ 3 ሰከንዱ ቁጥር ይወጣል
+        }
+
+        // አሸናፊነትን ማረጋገጥ (Check Line Completion)
+        function claimBingo() {
+            let isWin = false;
+
+            // 1. Horizontal Rows
+            for (let r = 0; r < 5; r++) {
+                if (userMarks[r].every(val => val)) isWin = true;
+            }
+
+            // 2. Vertical Columns
+            for (let c = 0; c < 5; c++) {
+                if ([0,1,2,3,4].every(r => userMarks[r][c])) isWin = true;
+            }
+
+            // 3. Diagonals
+            if ([0,1,2,3,4].every(i => userMarks[i][i])) isWin = true;
+            if ([0,1,2,3,4].every(i => userMarks[i][4-i])) isWin = true;
+
+            if (isWin) {
+                alert("🎉 እንኳን ደስ አለዎት! BINGO ሰርተዋል! አሸንፈዋል!");
+                clearInterval(gameInterval);
+            } else {
+                alert("ገና ቢንጎ አልሰሩም! እባክዎን መስመሩን በደንብ ይመልከቱ።");
+            }
+        }
+
+        function backToLobby() {
+            clearInterval(gameInterval);
+            document.getElementById('gamePage').style.display = 'none';
+            document.getElementById('lobbyPage').style.display = 'block';
+            document.getElementById('selectBox').style.display = 'flex';
+            document.getElementById('bingoCardView').style.display = 'none';
+            document.getElementById('bingoBtn').style.display = 'none';
+            document.getElementById('callDisplay').innerText = '';
+            userMarks = Array(5).fill().map(() => Array(5).fill(false));
+        }
+    </script>
+</body>
+</html>
