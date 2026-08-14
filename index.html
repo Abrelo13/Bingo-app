@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cool Bingo</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background-color: #0b1d28;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            margin: 0;
+            text-align: center;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #102a3a;
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .balance-text { color: #f39c12; font-size: 18px; }
+        
+        /* የቁጥሮች ቦርድ */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: #17384e;
+            border-radius: 8px;
+            padding: 15px 0;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: 0.2s;
+        }
+        /* ተጫዋቹ ሲመርጠው የሚሆን ቀለም */
+        .card.selected {
+            background: #27ae60;
+            border-color: #2ecc71;
+        }
+        /* የሲስተሙ ቁጥር ሲወጣ የሚሆን ቀለም */
+        .card.matched {
+            background: #e67e22 !important;
+            color: white;
+        }
+
+        .called-number-box {
+            font-size: 20px;
+            margin: 15px 0;
+            color: #f1c40f;
+            min-height: 30px;
+        }
+
+        .btn-container {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+        }
+        .btn-refresh { background: #17384e; }
+        .btn-start { background: #ff4747; }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <span>💳 Wallet Balance</span>
+        <span class="balance-text" id="balance">100 ETB</span>
+    </div>
+
+    <!-- የወጣው ቁጥር የሚታይበት -->
+    <div class="called-number-box" id="statusText">ቁጥሮች ይምረጡና Start ይበሉ</div>
+
+    <!-- የ 25 ቁጥሮች ቦርድ -->
+    <div class="grid" id="bingoGrid"></div>
+
+    <div class="btn-container">
+        <button class="btn-refresh" onclick="resetGame()">Refresh</button>
+        <button class="btn-start" id="startBtn" onclick="startGame()">Start Game</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const grid = document.getElementById('bingoGrid');
+        const statusText = document.getElementById('statusText');
+        let selectedNumbers = [];
+        let gameInterval = null;
+
+        // 1. ቦርዱን በ 25 ቁጥሮች መሙላት
+        function createBoard() {
+            grid.innerHTML = '';
+            for (let i = 1; i <= 25; i++) {
+                let numStr = i < 10 ? '0' + i : i;
+                let div = document.createElement('div');
+                div.className = 'card';
+                div.innerText = numStr;
+                div.dataset.number = i;
+                
+                div.onclick = function() {
+                    if (this.classList.contains('selected')) {
+                        this.classList.remove('selected');
+                        selectedNumbers = selectedNumbers.filter(n => n !== i);
+                    } else {
+                        this.classList.add('selected');
+                        selectedNumbers.push(i);
+                    }
+                };
+                grid.appendChild(div);
+            }
+        }
+
+        // 2. ጨዋታውን ማስጀመር (Start Game)
+        function startGame() {
+            if (selectedNumbers.length === 0) {
+                alert("እባክዎን ቢያንስ አንድ ቁጥር ይምረጡ!");
+                return;
+            }
+
+            document.getElementById('startBtn').disabled = true;
+            let drawnNumbers = [];
+            
+            // በየ 2 ሰከንዱ ቁጥር ማውጣት
+            gameInterval = setInterval(() => {
+                if (drawnNumbers.length >= 25) {
+                    clearInterval(gameInterval);
+                    statusText.innerText = "ጨዋታው ተጠናቋል!";
+                    return;
+                }
+
+                // ገና ያልወጣ ቁጥር በዘፈቀደ መምረጥ
+                let randomNum;
+                do {
+                    randomNum = Math.floor(Math.random() * 25) + 1;
+                } while (drawnNumbers.includes(randomNum));
+
+                drawnNumbers.push(randomNum);
+                let formattedNum = randomNum < 10 ? '0' + randomNum : randomNum;
+                statusText.innerText = `የወጣው ቁጥር፦ ${formattedNum}`;
+
+                // የወጣው ቁጥር ከተመረጡት ጋር ከተገጠመ ቀለም መቀየር
+                let cards = document.querySelectorAll('.card');
+                cards.forEach(card => {
+                    if (parseInt(card.dataset.number) === randomNum && card.classList.contains('selected')) {
+                        card.classList.add('matched');
+                    }
+                });
+
+            }, 2000);
+        }
+
+        // 3. ጨዋታውን እንደገና ለመጀመር (Refresh)
+        function resetGame() {
+            clearInterval(gameInterval);
+            selectedNumbers = [];
+            document.getElementById('startBtn').disabled = false;
+            statusText.innerText = "ቁጥሮች ይምረጡና Start ይበሉ";
+            createBoard();
+        }
+
+        // ገጹ ሲከፈት ቦርዱን ፍጠር
+        createBoard();
+    </script>
+</body>
+</html>
